@@ -88,7 +88,8 @@ class CsvCandleSource(
             throw CsvParseException("Duplicate column names in header at line 1")
         }
         val required = schema.requiredColumns()
-        val unknown = columns.filterNot { it in required }
+        val allowed = schema.allowedColumns()
+        val unknown = columns.filterNot { it in allowed }
         if (unknown.isNotEmpty()) {
             throw CsvParseException("Unknown column(s) in header at line 1: ${unknown.joinToString(",")}")
         }
@@ -108,6 +109,12 @@ class CsvCandleSource(
             when (timestampFormat) {
                 TimestampFormat.ISO_8601_UTC -> Instant.parse(value)
                 TimestampFormat.EPOCH_MILLIS -> Instant.ofEpochMilli(value.trim().toLong())
+                TimestampFormat.EPOCH_NANOS -> {
+                    val nanos = value.trim().toLong()
+                    val seconds = Math.floorDiv(nanos, 1_000_000_000L)
+                    val nanoAdjustment = Math.floorMod(nanos, 1_000_000_000L)
+                    Instant.ofEpochSecond(seconds, nanoAdjustment)
+                }
             }
         } catch (ex: Exception) {
             throw CsvParseException("Invalid timestamp at line $lineNumber in field ${schema.timestamp}: $value")

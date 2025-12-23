@@ -5,6 +5,8 @@ plugins {
 
     // Apply the Application plugin to add support for building an executable JVM application.
     application
+
+    id("org.openjfx.javafxplugin") version "0.0.13"
 }
 
 dependencies {
@@ -17,5 +19,10 @@ dependencies {
 application {
     // Define the Fully Qualified Name for the application main class
     // (Note that Kotlin compiles `App.kt` to a class with FQN `com.example.app.AppKt`.)
-    mainClass = "org.example.candles.cli.MainKt"
+    mainClass = "org.example.candles.ui.MainApp"
+}
+
+javafx {
+    version = "21.0.2"
+    modules = listOf("javafx.controls", "javafx.graphics", "javafx.swing")
 }

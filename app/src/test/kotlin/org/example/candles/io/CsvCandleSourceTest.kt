@@ -63,4 +63,45 @@ class CsvCandleSourceTest {
             source.stream().first()
         }
     }
+
+    @Test
+    fun `accepts mnq schema with optional columns`() {
+        val file = tempDir.resolve("mnq.csv")
+        file.toFile().writeText(
+            "ts_event,open,high,low,close,volume,symbol,source_symbol\n" +
+                "1704067200000000000,1,2,0.5,1.5,10,MNQ,MNQ\n"
+        )
+        val schema = CsvSchema(
+            timestamp = "ts_event",
+            optionalColumns = setOf("symbol", "source_symbol")
+        )
+        val source = CsvCandleSource(
+            path = file,
+            sourceTimeframe = Timeframe.parse("1m"),
+            timestampFormat = TimestampFormat.EPOCH_NANOS,
+            schema = schema
+        )
+        val candles = source.stream().toList()
+        assertEquals(1, candles.size)
+        assertEquals(Instant.parse("2024-01-01T00:00:00Z"), candles[0].start)
+    }
+
+    @Test
+    fun `rejects mnq header if optional columns not configured`() {
+        val file = tempDir.resolve("mnq-unknown.csv")
+        file.toFile().writeText(
+            "ts_event,open,high,low,close,volume,symbol,source_symbol\n" +
+                "2024-01-01T00:00:00Z,1,2,0.5,1.5,10,MNQ,MNQ\n"
+        )
+        val schema = CsvSchema(timestamp = "ts_event")
+        val source = CsvCandleSource(
+            path = file,
+            sourceTimeframe = Timeframe.parse("1m"),
+            timestampFormat = TimestampFormat.ISO_8601_UTC,
+            schema = schema
+        )
+        assertThrows(CsvParseException::class.java) {
+            source.stream().first()
+        }
+    }
 }
