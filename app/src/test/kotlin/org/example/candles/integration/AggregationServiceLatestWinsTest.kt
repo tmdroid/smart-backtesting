@@ -21,24 +21,27 @@ class AggregationServiceLatestWinsTest {
         val results = ArrayList<String>()
         val errors = ArrayList<Throwable>()
 
-        val service = AggregationService(executor) { _, tf, _, _ ->
+        val service = AggregationService(
+            executor = executor,
+            runner = { _, tf, _, _, _ ->
             if (tf == Timeframe.parse("5m")) {
                 blockLatch.await(1, TimeUnit.SECONDS)
             }
             listOf(dummyCandle())
         }
+        )
 
         val dummyPath = Paths.get("/tmp/ignore.csv")
         val schema = CsvSchema()
         val format = TimestampFormat.ISO_8601_UTC
 
-        service.aggregate(dummyPath, Timeframe.parse("5m"), schema, format, { _, tf ->
+        service.aggregate(dummyPath, Timeframe.parse("5m"), schema, format, null, { _, tf ->
             results.add(tf.toString())
         }, { error ->
             errors.add(error)
         })
 
-        service.aggregate(dummyPath, Timeframe.parse("15m"), schema, format, { _, tf ->
+        service.aggregate(dummyPath, Timeframe.parse("15m"), schema, format, null, { _, tf ->
             results.add(tf.toString())
             successLatch.countDown()
         }, { error ->

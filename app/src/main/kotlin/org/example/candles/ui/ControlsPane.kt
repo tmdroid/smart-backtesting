@@ -1,9 +1,11 @@
 package org.example.candles.ui
 
 import java.nio.file.Path
+import java.time.LocalDate
 import javafx.geometry.Insets
 import javafx.scene.control.Button
 import javafx.scene.control.ComboBox
+import javafx.scene.control.DatePicker
 import javafx.scene.control.Label
 import javafx.scene.control.TextField
 import javafx.scene.layout.HBox
@@ -16,6 +18,7 @@ class ControlsPane(
     private val onOpenFile: (Path) -> Unit,
     private val onTimeframeChange: (Timeframe) -> Unit,
     private val onSchemaChange: (CsvSchema) -> Unit,
+    private val onDayChange: (LocalDate?) -> Unit,
     private val onExport: () -> Unit
 ) {
     val root: HBox = HBox()
@@ -27,9 +30,12 @@ class ControlsPane(
     private val customField = TextField()
     private val applyCustomButton = Button("Apply")
     private val schemaBox = ComboBox<String>()
+    private val dayPicker = DatePicker()
+    private val clearDayButton = Button("Clear Day")
 
     private var currentFile: Path? = null
     private var suppressSchemaEvent = false
+    private var suppressTimeframeEvent = false
 
     init {
         root.spacing = 8.0
@@ -42,7 +48,7 @@ class ControlsPane(
         timeframeBox.selectionModel.selectFirst()
         timeframeBox.setOnAction {
             val value = timeframeBox.value
-            if (value != null && value != "Custom") {
+            if (!suppressTimeframeEvent && value != null && value != "Custom") {
                 onTimeframeChange(Timeframe.parse(value))
             }
         }
@@ -55,10 +61,30 @@ class ControlsPane(
             }
         }
 
+        dayPicker.promptText = "Day (UTC)"
+        dayPicker.isEditable = false
+        dayPicker.valueProperty().addListener { _, _, newValue ->
+            onDayChange(newValue)
+        }
+        clearDayButton.setOnAction {
+            dayPicker.value = null
+            onDayChange(null)
+        }
+
         customField.promptText = "Custom TF (e.g. 7m)"
         applyCustomButton.setOnAction { applyCustomTimeframe() }
 
-        root.children.addAll(openButton, fileLabel, timeframeBox, customField, applyCustomButton, schemaBox, exportButton)
+        root.children.addAll(
+            openButton,
+            fileLabel,
+            timeframeBox,
+            customField,
+            applyCustomButton,
+            schemaBox,
+            dayPicker,
+            clearDayButton,
+            exportButton
+        )
     }
 
     fun setCurrentFile(path: Path) {
@@ -98,6 +124,18 @@ class ControlsPane(
         suppressSchemaEvent = true
         schemaBox.selectionModel.select(name)
         suppressSchemaEvent = false
+    }
+
+    fun setTimeframePreset(value: String) {
+        suppressTimeframeEvent = true
+        timeframeBox.selectionModel.select(value)
+        suppressTimeframeEvent = false
+    }
+
+    fun currentDay(): LocalDate? = dayPicker.value
+
+    fun setCurrentDay(day: LocalDate?) {
+        dayPicker.value = day
     }
 
     private fun openFileDialog() {

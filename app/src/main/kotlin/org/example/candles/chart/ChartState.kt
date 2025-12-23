@@ -9,6 +9,7 @@ class ChartState {
     var visibleStartIndex: Int = 0
     var visibleCount: Int = 0
     var candleWidthPx: Double = 6.0
+    var yZoomFactor: Double = 1.0
 
     val minCandleWidthPx: Double = 2.0
     val maxVisibleCandles: Int = 5000
@@ -19,16 +20,22 @@ class ChartState {
     fun setCandles(newCandles: List<Candle>) {
         candles = newCandles
         visibleStartIndex = 0
+        yZoomFactor = 1.0
     }
 
-    fun updateVisibleCount(canvasWidth: Double) {
-        if (canvasWidth <= 0) {
+    fun updateVisibleCount(drawableWidth: Double) {
+        if (drawableWidth <= 0) {
             visibleCount = 0
             return
         }
-        val minWidthForMaxVisible = canvasWidth / maxVisibleCandles
-        candleWidthPx = maxOf(minCandleWidthPx, maxOf(candleWidthPx, minWidthForMaxVisible))
-        val countByWidth = (canvasWidth / candleWidthPx).toInt().coerceAtLeast(1)
+        val minWidthForMaxVisible = drawableWidth / maxVisibleCandles
+        if (totalCandles > 0 && totalCandles <= maxVisibleCandles) {
+            val minWidthForAll = drawableWidth / totalCandles
+            candleWidthPx = maxOf(minCandleWidthPx, maxOf(candleWidthPx, minWidthForAll))
+        } else {
+            candleWidthPx = maxOf(minCandleWidthPx, maxOf(candleWidthPx, minWidthForMaxVisible))
+        }
+        val countByWidth = (drawableWidth / candleWidthPx).toInt().coerceAtLeast(1)
         visibleCount = minOf(countByWidth, maxVisibleCandles, totalCandles.coerceAtLeast(1))
         if (totalCandles == 0) {
             visibleCount = 0
