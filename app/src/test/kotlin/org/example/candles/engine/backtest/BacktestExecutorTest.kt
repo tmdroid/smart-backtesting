@@ -60,6 +60,26 @@ class BacktestExecutorTest {
     }
 
     @Test
+    fun `overlapping ranges double count in overall totals`() {
+        val factory = StrategyFactory { FixedTradeStrategy("s1") }
+        val run = BacktestRun(
+            periods = listOf(
+                CustomDateRange(LocalDate.of(2025, 1, 1), LocalDate.of(2025, 1, 2)),
+                CustomDateRange(LocalDate.of(2025, 1, 2), LocalDate.of(2025, 1, 3))
+            ),
+            strategyFactories = listOf(factory),
+            timezone = ZoneId.of("UTC")
+        )
+        val overlapCandle = candleAt("2025-01-02T00:00:00Z")
+        val executor = BacktestExecutor { sequenceOf(overlapCandle) }
+        val result = executor.run(run)
+
+        assertEquals(2, result.rangeResults.size)
+        assertEquals(2, result.overallPerformance.trades)
+        assertEquals(2.0, result.overallPerformance.netPoints)
+    }
+
+    @Test
     fun `executor consumes candle sequence only once`() {
         val range = CustomDateRange(LocalDate.of(2025, 1, 1), LocalDate.of(2025, 1, 1))
         val run = BacktestRun(

@@ -74,7 +74,7 @@ class CachedBacktestSource(
     private fun loadDay(day: LocalDate): List<Candle> {
         val cached = binaryCache.load(path, schema, timestampFormat, day)
         if (cached != null) {
-            Log.info("Backtest cache hit (disk) for $day")
+//            Log.info("Backtest cache hit (disk) for $day")
             return cached
         }
         Log.info("Backtest cache miss for $day; reading CSV range")

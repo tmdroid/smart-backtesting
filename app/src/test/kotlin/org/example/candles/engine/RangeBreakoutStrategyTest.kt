@@ -166,6 +166,46 @@ class RangeBreakoutStrategyTest {
     }
 
     @Test
+    fun `stop loss wins when stop and break even trigger hit in same candle`() {
+        val strategy = strategy(breakEvenPoints = 1.0, takeProfitPoints = 5.0, sessionEndOverride = LocalTime.of(9, 2))
+        val base = Instant.parse("2020-01-01T09:00:00Z")
+
+        val candle0 = candleAtMinute(0, 10.0, 10.0, 9.0, 10.0, 1, base)
+        val candle1 = candleAtMinute(1, 10.0, 10.0, 9.0, 10.0, 1, base)
+        val breakout = candleAtMinute(2, 11.0, 11.0, 11.0, 11.0, 1, base)
+        val stopAndBe = candleAtMinute(3, 11.0, 12.0, 9.5, 11.0, 1, base)
+
+        val events = mutableListOf<Any>()
+        events.addAll(strategy.onCandle(candle0))
+        events.addAll(strategy.onCandle(candle1))
+        events.addAll(strategy.onCandle(breakout))
+        events.addAll(strategy.onCandle(stopAndBe))
+
+        val tradeClosed = events.filterIsInstance<TradeClosed>().single()
+        assertEquals(TradeOutcome.STOP_LOSS, tradeClosed.result.outcome)
+    }
+
+    @Test
+    fun `take profit wins when tp and break even trigger hit in same candle`() {
+        val strategy = strategy(breakEvenPoints = 1.0, takeProfitPoints = 2.0, sessionEndOverride = LocalTime.of(9, 2))
+        val base = Instant.parse("2020-01-01T09:00:00Z")
+
+        val candle0 = candleAtMinute(0, 10.0, 10.0, 9.0, 10.0, 1, base)
+        val candle1 = candleAtMinute(1, 10.0, 10.0, 9.0, 10.0, 1, base)
+        val breakout = candleAtMinute(2, 11.0, 11.0, 11.0, 11.0, 1, base)
+        val tpAndBe = candleAtMinute(3, 11.0, 13.0, 10.5, 12.0, 1, base)
+
+        val events = mutableListOf<Any>()
+        events.addAll(strategy.onCandle(candle0))
+        events.addAll(strategy.onCandle(candle1))
+        events.addAll(strategy.onCandle(breakout))
+        events.addAll(strategy.onCandle(tpAndBe))
+
+        val tradeClosed = events.filterIsInstance<TradeClosed>().single()
+        assertEquals(TradeOutcome.TAKE_PROFIT, tradeClosed.result.outcome)
+    }
+
+    @Test
     fun `break even stop is checked before take profit once armed`() {
         val strategy = strategy(breakEvenPoints = 1.0, takeProfitPoints = 2.0, sessionEndOverride = LocalTime.of(9, 2))
         val base = Instant.parse("2020-01-01T09:00:00Z")

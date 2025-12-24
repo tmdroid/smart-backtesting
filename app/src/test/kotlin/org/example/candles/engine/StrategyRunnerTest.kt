@@ -32,6 +32,15 @@ class StrategyRunnerTest {
         )
     }
 
+    @Test
+    fun `strategy runner consumes sequence only once`() {
+        val runner = StrategyRunner(listOf(TestStrategy("A")))
+        val candle = candleAt(0)
+        val singleUse = singleUseSequence(candle)
+        val events = runner.run(singleUse)
+        assertEquals(1, events.size)
+    }
+
     private class TestStrategy(override val id: String) : Strategy {
         override fun onCandle(candle: Candle): List<StrategyEvent> {
             return listOf(Annotation(time = candle.start, strategyId = id, message = "tick"))
@@ -48,5 +57,16 @@ class StrategyRunnerTest {
             close = 1.0,
             volume = 1L
         )
+    }
+
+    private fun singleUseSequence(candle: Candle): Sequence<Candle> {
+        var used = false
+        return Sequence {
+            if (used) {
+                throw IllegalStateException("Sequence iterated more than once")
+            }
+            used = true
+            listOf(candle).iterator()
+        }
     }
 }

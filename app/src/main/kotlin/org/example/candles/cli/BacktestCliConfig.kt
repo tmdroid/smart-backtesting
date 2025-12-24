@@ -20,11 +20,7 @@ data class BacktestCliConfig(
     val periods: List<Period>,
     val schema: CsvSchema,
     val timestampFormat: TimestampFormat,
-    val sessionStart: LocalTime,
-    val sessionEnd: LocalTime,
-    val stopLossPoints: Double,
-    val takeProfitPoints: Double,
-    val breakEvenTriggerPoints: Double?
+    val sessions: List<SessionSpec>
 ) {
     companion object {
         fun parse(args: Array<String>): BacktestCliConfig {
@@ -37,6 +33,8 @@ data class BacktestCliConfig(
             var stopLoss = 10.0
             var takeProfit = 20.0
             var breakEven: Double? = null
+            val sessions = mutableListOf<SessionWindow>()
+            val sessionRisks = mutableListOf<RiskParams>()
             val periods = mutableListOf<Period>()
 
             var index = 0
@@ -64,6 +62,16 @@ data class BacktestCliConfig(
                     }
                     "--session-end" -> {
                         sessionEnd = LocalTime.parse(requireValue(args, index, arg))
+                        index += 2
+                    }
+                    "--session" -> {
+                        val raw = requireValue(args, index, arg)
+                        sessions.add(parseSession(raw))
+                        index += 2
+                    }
+                    "--session-risk" -> {
+                        val raw = requireValue(args, index, arg)
+                        sessionRisks.add(parseSessionRisk(raw))
                         index += 2
                     }
                     "--sl" -> {
@@ -121,6 +129,24 @@ data class BacktestCliConfig(
             if (stopLoss <= 0.0 || takeProfit <= 0.0) {
                 throw IllegalArgumentException("--sl and --tp must be > 0")
             }
+            val resolvedSessionWindows = if (sessions.isEmpty()) {
+                listOf(SessionWindow(sessionStart, sessionEnd))
+            } else {
+                sessions.toList()
+            }
+            val defaultRisk = RiskParams(stopLoss, takeProfit, breakEven)
+            val resolvedSessionRisks = when {
+                sessionRisks.isEmpty() -> List(resolvedSessionWindows.size) { defaultRisk }
+                sessionRisks.size == 1 && resolvedSessionWindows.size > 1 ->
+                    List(resolvedSessionWindows.size) { sessionRisks.first() }
+                sessionRisks.size == resolvedSessionWindows.size -> sessionRisks.toList()
+                else -> throw IllegalArgumentException(
+                    "Number of --session-risk entries must be 1 or equal to number of --session entries"
+                )
+            }
+            val resolvedSessions = resolvedSessionWindows.zip(resolvedSessionRisks).map { (window, risk) ->
+                SessionSpec(window.start, window.end, risk)
+            }
 
             return BacktestCliConfig(
                 input = resolvedInput,
@@ -128,11 +154,7 @@ data class BacktestCliConfig(
                 periods = periods,
                 schema = resolvedSchema,
                 timestampFormat = timestampFormat,
-                sessionStart = sessionStart,
-                sessionEnd = sessionEnd,
-                stopLossPoints = stopLoss,
-                takeProfitPoints = takeProfit,
-                breakEvenTriggerPoints = breakEven
+                sessions = resolvedSessions
             )
         }
 
@@ -159,5 +181,44 @@ data class BacktestCliConfig(
                 else -> throw IllegalArgumentException("Unsupported schema preset: $value")
             }
         }
+
+        private fun parseSession(raw: String): SessionWindow {
+            val parts = raw.split('-')
+            if (parts.size != 2) {
+                throw IllegalArgumentException("--session expects HH:mm-HH:mm")
+            }
+            return SessionWindow(LocalTime.parse(parts[0]), LocalTime.parse(parts[1]))
+        }
+
+        private fun parseSessionRisk(raw: String): RiskParams {
+            val parts = raw.split(',')
+            if (parts.size !in 2..3) {
+                throw IllegalArgumentException("--session-risk expects sl,tp or sl,tp,be")
+            }
+            val sl = parts[0].toDouble()
+            val tp = parts[1].toDouble()
+            val be = if (parts.size == 3) parts[2].toDouble() else null
+            if (sl <= 0.0 || tp <= 0.0) {
+                throw IllegalArgumentException("--session-risk sl and tp must be > 0")
+            }
+            return RiskParams(sl, tp, be)
+        }
     }
 }
+
+data class SessionWindow(
+    val start: LocalTime,
+    val end: LocalTime
+)
+
+data class RiskParams(
+    val stopLossPoints: Double,
+    val takeProfitPoints: Double,
+    val breakEvenTriggerPoints: Double?
+)
+
+data class SessionSpec(
+    val start: LocalTime,
+    val end: LocalTime,
+    val risk: RiskParams
+)

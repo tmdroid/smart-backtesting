@@ -79,27 +79,28 @@ private fun runBacktest(args: Array<String>) {
     val nyZone = ZoneId.of("America/New_York")
     Log.info(
         "Backtest config: input=${config.input} tf=${config.targetTimeframe} periods=${config.periods.size} " +
-                "session=${config.sessionStart}-${config.sessionEnd} sl=${config.stopLossPoints} " +
-                "tp=${config.takeProfitPoints} be=${config.breakEvenTriggerPoints ?: "none"}"
+                "sessions=${config.sessions.joinToString { sessionLabel(it) }}"
     )
 
-    val strategyFactory = StrategyFactory {
-        RangeBreakoutStrategy(
-            id = "range-breakout",
-            rangeDefinition = RangeDefinition(
-                timeframe = config.targetTimeframe,
-                sessionTime = TradingSessionTime(
-                    timezone = nyZone,
-                    start = config.sessionStart,
-                    end = config.sessionEnd
+    val strategyFactories = config.sessions.mapIndexed { index, session ->
+        StrategyFactory {
+            RangeBreakoutStrategy(
+                id = "range-breakout-${index + 1}",
+                rangeDefinition = RangeDefinition(
+                    timeframe = config.targetTimeframe,
+                    sessionTime = TradingSessionTime(
+                        timezone = nyZone,
+                        start = session.start,
+                        end = session.end
+                    )
+                ),
+                tradeParameters = TradeParameters(
+                    stopLossPoints = session.risk.stopLossPoints,
+                    takeProfitPoints = session.risk.takeProfitPoints,
+                    breakEvenTriggerPoints = session.risk.breakEvenTriggerPoints
                 )
-            ),
-            tradeParameters = TradeParameters(
-                stopLossPoints = config.stopLossPoints,
-                takeProfitPoints = config.takeProfitPoints,
-                breakEvenTriggerPoints = config.breakEvenTriggerPoints
             )
-        )
+        }
     }
 
     val cachedSource = CachedBacktestSource(
@@ -126,7 +127,7 @@ private fun runBacktest(args: Array<String>) {
 
     val run = BacktestRun(
         periods = config.periods,
-        strategyFactories = listOf(strategyFactory),
+        strategyFactories = strategyFactories,
         timezone = nyZone
     )
     val result = executor.run(run)
@@ -134,6 +135,11 @@ private fun runBacktest(args: Array<String>) {
     BacktestReporter.printReport(result)
     println()
     BacktestReporter.printJson(result)
+}
+
+private fun sessionLabel(session: SessionSpec): String {
+    val be = session.risk.breakEvenTriggerPoints?.toString() ?: "none"
+    return "${session.start}-${session.end}(sl=${session.risk.stopLossPoints},tp=${session.risk.takeProfitPoints},be=$be)"
 }
 
 private fun <T> withCountLogging(sequence: Sequence<T>, label: String): Sequence<T> = sequence {

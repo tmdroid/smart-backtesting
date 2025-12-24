@@ -1,5 +1,7 @@
 package org.example.candles.engine.backtest.reporting
 
+import de.vandermeer.asciitable.AsciiTable
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.sqrt
 import org.example.candles.engine.backtest.BacktestResult
@@ -8,9 +10,11 @@ import org.example.candles.engine.trade.TradeResult
 
 object BacktestReporter {
     fun printReport(result: BacktestResult) {
-        println("Monthly Summary")
-        println("month  trades  w/l/be  win%   netPts  exp/trade  avgRR  sharpe")
         val monthSharpes = ArrayList<Double>()
+        val table = AsciiTable()
+        table.addRule()
+        table.addRow("month", "trades", "w/l/be", "win%", "netPts", "exp/trade", "avgRR", "sharpe")
+        table.addRule()
         for (rangeResult in result.rangeResults) {
             val perf = rangeResult.performance
             val metrics = computeMetrics(rangeResult.tradeResults, perf)
@@ -20,30 +24,41 @@ object BacktestReporter {
             val month = rangeResult.dateRange.start.toString().substring(0, 7)
             val winRatePct = metrics.winRate * 100.0
             val avgRR = metrics.averageRiskReward?.let { String.format("%.2f", it) } ?: "N/A"
-            println(
-                String.format(
-                    "%s  %5d  %2d/%2d/%2d  %5.1f  %6.1f  %9.2f  %5s  %6.2f",
-                    month,
-                    perf.trades,
-                    perf.wins,
-                    perf.losses,
-                    perf.breakevens,
-                    winRatePct,
-                    perf.netPoints,
-                    metrics.expectancyPerTrade,
-                    avgRR,
-                    metrics.sharpeRatio
-                )
+            table.addRow(
+                month,
+                perf.trades.toString(),
+                "${perf.wins}/${perf.losses}/${perf.breakevens}",
+                String.format("%.1f", winRatePct),
+                String.format("%.1f", perf.netPoints),
+                String.format("%.2f", metrics.expectancyPerTrade),
+                avgRR,
+                String.format("%.2f", metrics.sharpeRatio)
             )
+            table.addRule()
         }
 
         val overall = result.overallPerformance
-        val overallMetrics = computeMetrics(result.rangeResults.flatMap { it.tradeResults }, overall)
-        val avgMonthlySharpe = if (monthSharpes.isNotEmpty()) {
-            monthSharpes.average()
-        } else {
-            0.0
-        }
+        val overallTrades = result.rangeResults.flatMap { it.tradeResults }
+        val overallMetrics = computeMetrics(overallTrades, overall)
+        val avgMonthlySharpe = if (monthSharpes.isNotEmpty()) monthSharpes.average() else 0.0
+
+        val totalWinRatePct = overallMetrics.winRate * 100.0
+        val totalAvgRR = overallMetrics.averageRiskReward?.let { String.format("%.2f", it) } ?: "N/A"
+        table.addRow(
+            "TOTAL",
+            overall.trades.toString(),
+            "${overall.wins}/${overall.losses}/${overall.breakevens}",
+            String.format("%.1f", totalWinRatePct),
+            String.format("%.1f", overall.netPoints),
+            String.format("%.2f", overallMetrics.expectancyPerTrade),
+            totalAvgRR,
+            String.format("%.2f", overallMetrics.sharpeRatio)
+        )
+        table.addRule()
+
+        println("Monthly Summary")
+        println(table.render())
+
         println()
         println("Overall Summary")
         println(
@@ -57,12 +72,11 @@ object BacktestReporter {
                 overall.netPoints
             )
         )
-        val overallAvgRR = overallMetrics.averageRiskReward?.let { String.format("%.2f", it) } ?: "N/A"
         println(
             String.format(
                 "Expectancy/Trade: %.2f  Avg RR: %s  Avg Monthly Sharpe: %.2f",
                 overallMetrics.expectancyPerTrade,
-                overallAvgRR,
+                totalAvgRR,
                 avgMonthlySharpe
             )
         )
@@ -70,38 +84,51 @@ object BacktestReporter {
 
     fun printJson(result: BacktestResult) {
         val sb = StringBuilder()
-        sb.append("{\"ranges\":[")
+        sb.append("{\n")
+        sb.append("  \"ranges\": [\n")
         result.rangeResults.forEachIndexed { index, rangeResult ->
-            if (index > 0) sb.append(",")
+            if (index > 0) sb.append(",\n")
             val perf = rangeResult.performance
             val metrics = computeMetrics(rangeResult.tradeResults, perf)
-            sb.append("{")
-            sb.append("\"start\":\"").append(rangeResult.dateRange.start).append("\",")
-            sb.append("\"end\":\"").append(rangeResult.dateRange.endInclusive).append("\",")
-            sb.append("\"trades\":").append(perf.trades).append(",")
-            sb.append("\"wins\":").append(perf.wins).append(",")
-            sb.append("\"losses\":").append(perf.losses).append(",")
-            sb.append("\"breakevens\":").append(perf.breakevens).append(",")
-            sb.append("\"netPoints\":").append(perf.netPoints).append(",")
-            sb.append("\"winRate\":").append(metrics.winRate).append(",")
-            sb.append("\"expectancyPerTrade\":").append(metrics.expectancyPerTrade).append(",")
-            sb.append("\"averageRiskReward\":").append(metrics.averageRiskReward ?: "null").append(",")
-            sb.append("\"sharpeRatio\":").append(metrics.sharpeRatio)
-            sb.append("}")
+            sb.append("    {\n")
+            sb.append("      \"start\": \"").append(rangeResult.dateRange.start).append("\",\n")
+            sb.append("      \"end\": \"").append(rangeResult.dateRange.endInclusive).append("\",\n")
+            sb.append("      \"trades\": ").append(perf.trades).append(",\n")
+            sb.append("      \"wins\": ").append(perf.wins).append(",\n")
+            sb.append("      \"losses\": ").append(perf.losses).append(",\n")
+            sb.append("      \"breakevens\": ").append(perf.breakevens).append(",\n")
+            sb.append("      \"netPoints\": ").append(format2(perf.netPoints)).append(",\n")
+            sb.append("      \"winRate\": ").append(format2(metrics.winRate)).append(",\n")
+            sb.append("      \"expectancyPerTrade\": ").append(format2(metrics.expectancyPerTrade)).append(",\n")
+            sb.append("      \"averageRiskReward\": ")
+            if (metrics.averageRiskReward == null) {
+                sb.append("null,\n")
+            } else {
+                sb.append(format2(metrics.averageRiskReward)).append(",\n")
+            }
+            sb.append("      \"sharpeRatio\": ").append(format2(metrics.sharpeRatio)).append("\n")
+            sb.append("    }")
         }
-        sb.append("],\"overall\":{")
+        sb.append("\n  ],\n")
+        sb.append("  \"overall\": {\n")
         val overall = result.overallPerformance
         val overallMetrics = computeMetrics(result.rangeResults.flatMap { it.tradeResults }, overall)
-        sb.append("\"trades\":").append(overall.trades).append(",")
-        sb.append("\"wins\":").append(overall.wins).append(",")
-        sb.append("\"losses\":").append(overall.losses).append(",")
-        sb.append("\"breakevens\":").append(overall.breakevens).append(",")
-        sb.append("\"netPoints\":").append(overall.netPoints).append(",")
-        sb.append("\"winRate\":").append(overallMetrics.winRate).append(",")
-        sb.append("\"expectancyPerTrade\":").append(overallMetrics.expectancyPerTrade).append(",")
-        sb.append("\"averageRiskReward\":").append(overallMetrics.averageRiskReward ?: "null").append(",")
-        sb.append("\"sharpeRatio\":").append(overallMetrics.sharpeRatio)
-        sb.append("}}")
+        sb.append("    \"trades\": ").append(overall.trades).append(",\n")
+        sb.append("    \"wins\": ").append(overall.wins).append(",\n")
+        sb.append("    \"losses\": ").append(overall.losses).append(",\n")
+        sb.append("    \"breakevens\": ").append(overall.breakevens).append(",\n")
+        sb.append("    \"netPoints\": ").append(format2(overall.netPoints)).append(",\n")
+        sb.append("    \"winRate\": ").append(format2(overallMetrics.winRate)).append(",\n")
+        sb.append("    \"expectancyPerTrade\": ").append(format2(overallMetrics.expectancyPerTrade)).append(",\n")
+        sb.append("    \"averageRiskReward\": ")
+        if (overallMetrics.averageRiskReward == null) {
+            sb.append("null,\n")
+        } else {
+            sb.append(format2(overallMetrics.averageRiskReward)).append(",\n")
+        }
+        sb.append("    \"sharpeRatio\": ").append(format2(overallMetrics.sharpeRatio)).append("\n")
+        sb.append("  }\n")
+        sb.append("}\n")
         println(sb.toString())
     }
 
@@ -139,5 +166,9 @@ object BacktestReporter {
         val stddev = sqrt(variance)
         if (stddev == 0.0) return 0.0
         return (mean / stddev) * sqrt(pnls.size.toDouble())
+    }
+
+    private fun format2(value: Double): String {
+        return String.format(Locale.US, "%.2f", value)
     }
 }
