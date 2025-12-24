@@ -31,6 +31,7 @@ Step 4: Backtest Date Range Engine
 - Streaming date filtering by session timezone (America/New_York).
 - Per-range and overall performance summaries.
 - Strategy factories ensure clean state per range.
+- Multiple concurrent sessions per day (independent strategies).
 
 ## Requirements
 
@@ -52,7 +53,17 @@ Aggregate CSV to a target timeframe:
 
 Backtest with Range Breakout strategy:
 ```
-./gradlew run --args="--backtest --input /path/to/file.csv --tf 5m --month 2025-11 --session-start 09:30 --session-end 10:30 --sl 10 --tp 20 --be 5 --schema mnq --timestamp-format epochnanos"
+./gradlew run --args="--backtest --input /path/to/file.csv --tf 5m --month 2025-11 --session 09:30-10:30 --sl 10 --tp 20 --be 5 --schema mnq --timestamp-format epochnanos"
+```
+
+Backtest with multiple sessions (independent strategies):
+```
+./gradlew run --args="--backtest --input /path/to/file.csv --tf 5m --month 2025-11 --session 03:00-03:15 --session 09:30-09:45 --session-risk 40,45,25 --schema mnq --timestamp-format epochnanos"
+```
+
+Backtest with per-session risk:
+```
+./gradlew run --args="--backtest --input /path/to/file.csv --tf 5m --month 2025-11 --session 03:00-03:15 --session 09:30-09:45 --session-risk 40,45,25 --session-risk 30,50,20 --schema mnq --timestamp-format epochnanos"
 ```
 
 Backtest period flags:
@@ -60,6 +71,22 @@ Backtest period flags:
 - `--month YYYY-MM`
 - `--year YYYY`
 - `--month-range YYYY-MM:YYYY-MM`
+
+Session flags:
+- `--session HH:mm-HH:mm` (repeatable)
+- `--session-risk sl,tp[,be]` (repeatable; if only one provided, it applies to all sessions)
+
+## Scripts
+
+Backtest script (multi-session example):
+```
+./scripts/run_backtest.sh
+```
+
+Script command (current defaults):
+```
+./gradlew -q run --no-configuration-cache --args="--backtest --input /Users/mac/IdeaProjects/smart-backtester/data/MNQ/mnq-history/mnq1_continuous.ohlcv-1m.csv --tf 5m --month-range 2024-01:2024-12 --session 03:00-03:15 --session 09:30-09:45 --sl 40 --tp 40 --be 20 --schema mnq --timestamp-format epochnanos"
+```
 
 ## UI usage
 
