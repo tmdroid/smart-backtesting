@@ -1,9 +1,7 @@
 package org.example.candles.engine.strategy
 
-import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
-import java.time.ZonedDateTime
 import org.example.candles.domain.Candle
 import org.example.candles.engine.range.IntrabarFillModel
 import org.example.candles.engine.range.Range
@@ -12,6 +10,7 @@ import org.example.candles.engine.range.RangeDefinition
 import org.example.candles.engine.trade.Trade
 import org.example.candles.engine.trade.TradeOutcome
 import org.example.candles.engine.trade.TradeResult
+import java.time.Duration
 
 class RangeBreakoutStrategy(
     override val id: String,

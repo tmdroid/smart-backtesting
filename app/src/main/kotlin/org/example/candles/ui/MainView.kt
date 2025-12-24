@@ -49,11 +49,10 @@ class MainView {
     private val overlayRequestId = AtomicLong(0)
     private val overlayDebounce = PauseTransition(Duration.millis(150.0))
     private val chartState = ChartState()
-    private val zoomPanHandler = ZoomPanHandler(chartCanvas, chartState, ::onChartChanged)
     private var currentTimeframe: Timeframe? = null
     private var currentDay: LocalDate? = null
 
-    private lateinit var controlsPane: ControlsPane
+    private val controlsPane: ControlsPane
     private val loadingOverlay = StackPane()
 
     init {
@@ -64,6 +63,7 @@ class MainView {
             onStrategyChange = { _ -> requestOverlayUpdate() },
             onExport = { exportPng() }
         )
+        ZoomPanHandler(chartCanvas, chartState, ::onChartChanged)
         content.top = controlsPane.root
         chartPane.minWidth = 0.0
         chartPane.minHeight = 0.0
@@ -316,9 +316,11 @@ class MainView {
             low = rangeBuilt.range.low
         )
 
-        val riskRewardBox = breakoutIndex?.let { index ->
-            val direction = breakout?.direction ?: Direction.LONG
-            val entry = breakout.breakoutPrice
+        val riskRewardBox = breakout?.let { signal ->
+            val index = candles.indexOfFirst { it.start == signal.signalCandle.start }.takeIf { it >= 0 }
+                ?: return@let null
+            val direction = signal.direction
+            val entry = signal.breakoutPrice
             val stop = if (direction == Direction.LONG) {
                 entry - config.stopLossPoints
             } else {

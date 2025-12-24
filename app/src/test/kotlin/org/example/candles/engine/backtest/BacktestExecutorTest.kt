@@ -14,7 +14,6 @@ import org.example.candles.engine.trade.Trade
 import org.example.candles.engine.trade.TradeOutcome
 import org.example.candles.engine.trade.TradeResult
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class BacktestExecutorTest {

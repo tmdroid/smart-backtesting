@@ -36,7 +36,7 @@ fun aggregate(
     val first = iterator.next()
     val sourceTimeframe = try {
         Timeframe.fromDuration(Duration.between(first.start, first.endExclusive))
-    } catch (ex: IllegalArgumentException) {
+    } catch (_: IllegalArgumentException) {
         throw CandleValidationException("Invalid source timeframe inferred from first candle")
     }
     val aggregator = CandleAggregator(sourceTimeframe, targetTimeframe, policy)

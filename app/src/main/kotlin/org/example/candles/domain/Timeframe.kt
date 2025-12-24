@@ -5,6 +5,7 @@ import java.time.Duration
 class Timeframe private constructor(private val duration: Duration) {
     val millis: Long = duration.toMillis()
 
+    @Suppress("unused")
     fun isMultipleOf(other: Timeframe): Boolean = millis % other.millis == 0L
 
     internal fun toDuration(): Duration = duration

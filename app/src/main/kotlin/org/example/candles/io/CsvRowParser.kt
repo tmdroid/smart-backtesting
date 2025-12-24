@@ -56,7 +56,7 @@ class CsvRowParser(
                     Instant.ofEpochSecond(seconds, nanoAdjustment)
                 }
             }
-        } catch (ex: Exception) {
+        } catch (_: Exception) {
             throw CsvParseException("Invalid timestamp at line $lineNumber in field ${schema.timestamp}: $value")
         }
     }
@@ -65,7 +65,7 @@ class CsvRowParser(
         val value = fields[indexByName.getValue(name)]
         return try {
             value.trim().toDouble()
-        } catch (ex: Exception) {
+        } catch (_: Exception) {
             throw CsvParseException("Invalid number at line $lineNumber in field $name: $value")
         }
     }
@@ -74,7 +74,7 @@ class CsvRowParser(
         val value = fields[indexByName.getValue(name)]
         return try {
             value.trim().toLong()
-        } catch (ex: Exception) {
+        } catch (_: Exception) {
             throw CsvParseException("Invalid number at line $lineNumber in field $name: $value")
         }
     }

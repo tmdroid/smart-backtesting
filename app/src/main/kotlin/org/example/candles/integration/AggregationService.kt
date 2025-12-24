@@ -62,7 +62,7 @@ class AggregationService(
                     Log.info("Aggregation request $id completed: ${result.size} candles")
                     onSuccess(result, timeframe)
                 }
-            } catch (ex: CancellationException) {
+            } catch (_: CancellationException) {
                 Log.info("Aggregation request $id canceled")
                 // Ignore canceled tasks
             } catch (ex: Exception) {

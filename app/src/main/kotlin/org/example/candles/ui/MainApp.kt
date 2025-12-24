@@ -4,6 +4,7 @@ import javafx.application.Application
 import javafx.scene.Scene
 import javafx.stage.Stage
 
+@Suppress("unused")
 class MainApp : Application() {
     private var view: MainView? = null
 

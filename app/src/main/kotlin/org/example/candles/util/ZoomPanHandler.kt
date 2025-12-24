@@ -1,6 +1,5 @@
 package org.example.candles.util
 
-import javafx.scene.canvas.Canvas
 import javafx.scene.input.MouseButton
 import javafx.scene.input.ScrollEvent
 import kotlin.math.roundToInt

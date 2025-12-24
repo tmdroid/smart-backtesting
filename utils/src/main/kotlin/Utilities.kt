@@ -7,6 +7,7 @@ import kotlinx.coroutines.*
 import kotlin.time.ExperimentalTime
 
 @Serializable
+@Suppress("unused")
 class Printer(val message: String) {
     @OptIn(ExperimentalTime::class)
     fun printMessage() = runBlocking {

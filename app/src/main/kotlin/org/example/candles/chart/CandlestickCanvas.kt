@@ -3,7 +3,6 @@ package org.example.candles.chart
 import javafx.scene.canvas.Canvas
 import javafx.scene.canvas.GraphicsContext
 import java.time.ZoneId
-import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import javafx.scene.paint.Color
 import org.example.candles.domain.Candle
@@ -51,9 +50,6 @@ class CandlestickCanvas : Canvas(800.0, 600.0) {
     fun plotTop(): Double = topPadding
 
     fun plotBottom(): Double = height - bottomPadding
-
-    fun isInPlotArea(x: Double, y: Double): Boolean =
-        x in plotLeft()..plotRight() && y in plotTop()..plotBottom()
 
     fun isInXAxisArea(y: Double): Boolean = y >= plotBottom()
 

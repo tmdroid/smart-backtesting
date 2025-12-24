@@ -12,8 +12,8 @@ import org.example.candles.policy.ValidationPolicy
 import org.example.candles.time.BucketAlignment
 
 class CandleAggregator(
-    private val sourceTimeframe: Timeframe,
-    private val targetTimeframe: Timeframe,
+    sourceTimeframe: Timeframe,
+    targetTimeframe: Timeframe,
     private val policy: AggregationPolicy = AggregationPolicy()
 ) {
     private val targetDuration: Duration = targetTimeframe.toDuration()
@@ -187,7 +187,7 @@ class CandleAggregator(
     private fun safeAddVolume(current: Long, delta: Long): Long {
         return try {
             Math.addExact(current, delta)
-        } catch (ex: ArithmeticException) {
+        } catch (_: ArithmeticException) {
             throw CandleValidationException("Volume overflow while aggregating")
         }
     }

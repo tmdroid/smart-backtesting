@@ -174,8 +174,6 @@ class ControlsPane(
         suppressTimeframeEvent = false
     }
 
-    fun currentDay(): LocalDate? = dayPicker.value
-
     fun setCurrentDay(day: LocalDate?) {
         dayPicker.value = day
     }
@@ -244,7 +242,7 @@ class ControlsPane(
         }
         return try {
             LocalTime.parse(value)
-        } catch (ex: Exception) {
+        } catch (_: Exception) {
             ErrorDialogs.show("Invalid $label", "Use HH:mm format")
             null
         }
