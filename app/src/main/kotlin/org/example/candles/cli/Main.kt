@@ -1,23 +1,23 @@
 package org.example.candles.cli
 
-import java.io.BufferedWriter
-import java.nio.file.Files
-import java.time.Instant
-import java.time.ZoneId
+import org.example.candles.aggregation.aggregate
+import org.example.candles.domain.Timeframe
+import org.example.candles.domain.TimestampSemantics
 import org.example.candles.engine.backtest.BacktestExecutor
-import org.example.candles.engine.backtest.BacktestResult
 import org.example.candles.engine.backtest.BacktestRun
 import org.example.candles.engine.backtest.StrategyFactory
+import org.example.candles.engine.backtest.reporting.BacktestReporter
 import org.example.candles.engine.range.RangeDefinition
 import org.example.candles.engine.range.TradingSessionTime
 import org.example.candles.engine.strategy.RangeBreakoutStrategy
 import org.example.candles.engine.strategy.TradeParameters
-import org.example.candles.aggregation.aggregate
-import org.example.candles.domain.Timeframe
-import org.example.candles.domain.TimestampSemantics
 import org.example.candles.integration.CachedBacktestSource
 import org.example.candles.io.CsvCandleSource
 import org.example.candles.util.Log
+import java.io.BufferedWriter
+import java.nio.file.Files
+import java.time.Instant
+import java.time.ZoneId
 
 fun main(args: Array<String>) {
     if (args.contains("--backtest")) {
@@ -79,8 +79,8 @@ private fun runBacktest(args: Array<String>) {
     val nyZone = ZoneId.of("America/New_York")
     Log.info(
         "Backtest config: input=${config.input} tf=${config.targetTimeframe} periods=${config.periods.size} " +
-            "session=${config.sessionStart}-${config.sessionEnd} sl=${config.stopLossPoints} " +
-            "tp=${config.takeProfitPoints} be=${config.breakEvenTriggerPoints ?: "none"}"
+                "session=${config.sessionStart}-${config.sessionEnd} sl=${config.stopLossPoints} " +
+                "tp=${config.takeProfitPoints} be=${config.breakEvenTriggerPoints ?: "none"}"
     )
 
     val strategyFactory = StrategyFactory {
@@ -117,7 +117,10 @@ private fun runBacktest(args: Array<String>) {
             withCountLogging(raw, "Backtest candles (1m) for ${range.start} -> ${range.endInclusive}")
         } else {
             val aggregated = aggregate(raw, sourceTimeframe, config.targetTimeframe)
-            withCountLogging(aggregated, "Backtest candles (${config.targetTimeframe}) for ${range.start} -> ${range.endInclusive}")
+            withCountLogging(
+                aggregated,
+                "Backtest candles (${config.targetTimeframe}) for ${range.start} -> ${range.endInclusive}"
+            )
         }
     }
 
@@ -128,9 +131,9 @@ private fun runBacktest(args: Array<String>) {
     )
     val result = executor.run(run)
 
-    printBacktestTable(result)
+    BacktestReporter.printReport(result)
     println()
-    printBacktestJson(result)
+    BacktestReporter.printJson(result)
 }
 
 private fun <T> withCountLogging(sequence: Sequence<T>, label: String): Sequence<T> = sequence {
@@ -140,41 +143,4 @@ private fun <T> withCountLogging(sequence: Sequence<T>, label: String): Sequence
         yield(item)
     }
     Log.info("$label: $count")
-}
-
-private fun printBacktestTable(result: BacktestResult) {
-    println("range_start,range_end,trades,wins,losses,breakevens,netPoints")
-    for (rangeResult in result.rangeResults) {
-        val perf = rangeResult.performance
-        println("${rangeResult.dateRange.start},${rangeResult.dateRange.endInclusive},${perf.trades},${perf.wins},${perf.losses},${perf.breakevens},${perf.netPoints}")
-    }
-    val overall = result.overallPerformance
-    println("OVERALL,OVERALL,${overall.trades},${overall.wins},${overall.losses},${overall.breakevens},${overall.netPoints}")
-}
-
-private fun printBacktestJson(result: BacktestResult) {
-    val sb = StringBuilder()
-    sb.append("{\"ranges\":[")
-    result.rangeResults.forEachIndexed { index, rangeResult ->
-        if (index > 0) sb.append(",")
-        val perf = rangeResult.performance
-        sb.append("{")
-        sb.append("\"start\":\"").append(rangeResult.dateRange.start).append("\",")
-        sb.append("\"end\":\"").append(rangeResult.dateRange.endInclusive).append("\",")
-        sb.append("\"trades\":").append(perf.trades).append(",")
-        sb.append("\"wins\":").append(perf.wins).append(",")
-        sb.append("\"losses\":").append(perf.losses).append(",")
-        sb.append("\"breakevens\":").append(perf.breakevens).append(",")
-        sb.append("\"netPoints\":").append(perf.netPoints)
-        sb.append("}")
-    }
-    sb.append("],\"overall\":{")
-    val overall = result.overallPerformance
-    sb.append("\"trades\":").append(overall.trades).append(",")
-    sb.append("\"wins\":").append(overall.wins).append(",")
-    sb.append("\"losses\":").append(overall.losses).append(",")
-    sb.append("\"breakevens\":").append(overall.breakevens).append(",")
-    sb.append("\"netPoints\":").append(overall.netPoints)
-    sb.append("}}")
-    println(sb.toString())
 }

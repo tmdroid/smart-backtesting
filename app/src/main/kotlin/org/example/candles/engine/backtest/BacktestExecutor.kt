@@ -21,9 +21,9 @@ class BacktestExecutor(
             val rawCandles = candleSourceFactory(range)
             val filtered = DateRangeFilter.filter(rawCandles, range, backtestRun.timezone)
             val events = runner.run(filtered)
-            val tradeResults = events.filterIsInstance<TradeClosed>().map { it.result }.asSequence()
-            val performance = aggregateAllStrategies(tradeResults)
-            rangeResults.add(RangeBacktestResult(range, performance))
+            val tradeResults = events.filterIsInstance<TradeClosed>().map { it.result }.toList()
+            val performance = aggregateAllStrategies(tradeResults.asSequence())
+            rangeResults.add(RangeBacktestResult(range, performance, tradeResults))
             allSummaries.add(performance)
         }
 

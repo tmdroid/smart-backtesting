@@ -19,7 +19,7 @@ class CachedBacktestSource(
     private val schema: CsvSchema,
     private val timestampFormat: TimestampFormat,
     private val sourceTimeframe: Timeframe,
-    private val zoneId: ZoneId
+    zoneId: ZoneId
 ) {
     private val binaryCache = BinaryDayCache(sourceTimeframe, zoneId)
     private val dayIndex = CsvDayIndex(zoneId, binaryCache)
