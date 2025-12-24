@@ -7,7 +7,6 @@ import java.time.ZoneId
 import org.example.candles.engine.backtest.BacktestExecutor
 import org.example.candles.engine.backtest.BacktestResult
 import org.example.candles.engine.backtest.BacktestRun
-import org.example.candles.engine.backtest.DateRangeFilter
 import org.example.candles.engine.backtest.StrategyFactory
 import org.example.candles.engine.range.RangeDefinition
 import org.example.candles.engine.range.TradingSessionTime
@@ -16,7 +15,9 @@ import org.example.candles.engine.strategy.TradeParameters
 import org.example.candles.aggregation.aggregate
 import org.example.candles.domain.Timeframe
 import org.example.candles.domain.TimestampSemantics
+import org.example.candles.integration.CachedBacktestSource
 import org.example.candles.io.CsvCandleSource
+import org.example.candles.util.Log
 
 fun main(args: Array<String>) {
     if (args.contains("--backtest")) {
@@ -76,6 +77,11 @@ private fun runBacktest(args: Array<String>) {
     val config = BacktestCliConfig.parse(args)
     val sourceTimeframe = Timeframe.parse("1m")
     val nyZone = ZoneId.of("America/New_York")
+    Log.info(
+        "Backtest config: input=${config.input} tf=${config.targetTimeframe} periods=${config.periods.size} " +
+            "session=${config.sessionStart}-${config.sessionEnd} sl=${config.stopLossPoints} " +
+            "tp=${config.takeProfitPoints} be=${config.breakEvenTriggerPoints ?: "none"}"
+    )
 
     val strategyFactory = StrategyFactory {
         RangeBreakoutStrategy(
@@ -96,19 +102,22 @@ private fun runBacktest(args: Array<String>) {
         )
     }
 
+    val cachedSource = CachedBacktestSource(
+        path = config.input,
+        schema = config.schema,
+        timestampFormat = config.timestampFormat,
+        sourceTimeframe = sourceTimeframe,
+        zoneId = nyZone
+    )
+    cachedSource.prebuildAllDays()
+
     val executor = BacktestExecutor { range ->
-        val source = CsvCandleSource(
-            path = config.input,
-            sourceTimeframe = sourceTimeframe,
-            timestampFormat = config.timestampFormat,
-            timestampSemantics = TimestampSemantics.START_TIME,
-            schema = config.schema
-        )
-        val filtered = DateRangeFilter.filter(source.stream(), range, nyZone)
+        val raw = cachedSource.stream(range)
         if (config.targetTimeframe.millis == sourceTimeframe.millis) {
-            filtered
+            withCountLogging(raw, "Backtest candles (1m) for ${range.start} -> ${range.endInclusive}")
         } else {
-            aggregate(filtered, sourceTimeframe, config.targetTimeframe)
+            val aggregated = aggregate(raw, sourceTimeframe, config.targetTimeframe)
+            withCountLogging(aggregated, "Backtest candles (${config.targetTimeframe}) for ${range.start} -> ${range.endInclusive}")
         }
     }
 
@@ -122,6 +131,15 @@ private fun runBacktest(args: Array<String>) {
     printBacktestTable(result)
     println()
     printBacktestJson(result)
+}
+
+private fun <T> withCountLogging(sequence: Sequence<T>, label: String): Sequence<T> = sequence {
+    var count = 0
+    for (item in sequence) {
+        count++
+        yield(item)
+    }
+    Log.info("$label: $count")
 }
 
 private fun printBacktestTable(result: BacktestResult) {

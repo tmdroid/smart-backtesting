@@ -10,6 +10,7 @@ import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.util.Properties
 import org.example.candles.domain.Candle
 import org.example.candles.domain.Timeframe
@@ -17,7 +18,10 @@ import org.example.candles.io.CsvSchema
 import org.example.candles.io.TimestampFormat
 import org.example.candles.util.Log
 
-class BinaryDayCache(private val sourceTimeframe: Timeframe = Timeframe.parse("1m")) {
+class BinaryDayCache(
+    private val sourceTimeframe: Timeframe = Timeframe.parse("1m"),
+    private val zoneId: ZoneId = ZoneId.of("America/New_York")
+) {
     private val magic = "CBIN"
     private val version = 1
 
@@ -103,6 +107,7 @@ class BinaryDayCache(private val sourceTimeframe: Timeframe = Timeframe.parse("1
         props.setProperty("csvMtime", stat.toMillis().toString())
         props.setProperty("schemaTimestamp", schema.timestamp)
         props.setProperty("format", timestampFormat.name)
+        props.setProperty("zoneId", zoneId.id)
         props.setProperty("day", day.toString())
         props.setProperty("count", candles.size.toString())
         props.setProperty("version", version.toString())
@@ -160,8 +165,9 @@ class BinaryDayCache(private val sourceTimeframe: Timeframe = Timeframe.parse("1
             val mtime = Files.getLastModifiedTime(csvPath).toMillis().toString()
             props.getProperty("csvSize") == size &&
                 props.getProperty("csvMtime") == mtime &&
-                props.getProperty("schemaTimestamp") == schema.timestamp &&
+            props.getProperty("schemaTimestamp") == schema.timestamp &&
                 props.getProperty("format") == timestampFormat.name &&
+                props.getProperty("zoneId") == zoneId.id &&
                 props.getProperty("day") == day.toString() &&
                 props.getProperty("version") == version.toString()
         } catch (_: Exception) {
