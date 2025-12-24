@@ -1,6 +1,8 @@
 package org.example.candles.chart
 
 import javafx.scene.canvas.Canvas
+import javafx.scene.canvas.GraphicsContext
+import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import javafx.scene.paint.Color
@@ -11,7 +13,7 @@ class CandlestickCanvas : Canvas(800.0, 600.0) {
     private val rightPadding = 80.0
     private val topPadding = 20.0
     private val bottomPadding = 30.0
-    private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneOffset.UTC)
+    private var timeZone: ZoneId = ZoneId.of("America/New_York")
     private var crosshairX: Double? = null
     private var crosshairY: Double? = null
     private var lastState: ChartState? = null
@@ -57,6 +59,10 @@ class CandlestickCanvas : Canvas(800.0, 600.0) {
 
     fun isInYAxisArea(x: Double): Boolean = x >= plotRight()
 
+    fun setTimeZone(zoneId: ZoneId) {
+        timeZone = zoneId
+    }
+
     fun render(state: ChartState) {
         lastState = state
         val gc = graphicsContext2D
@@ -93,6 +99,7 @@ class CandlestickCanvas : Canvas(800.0, 600.0) {
 
         drawGrid(gc, yMin, yMax)
         drawTimeAxis(gc, visible, candleWidth)
+        drawOverlays(gc, state, yMin, yMax)
 
         for ((idx, candle) in visible.withIndex()) {
             val xCenter = leftPadding + idx * candleWidth + candleWidth / 2
@@ -136,7 +143,7 @@ class CandlestickCanvas : Canvas(800.0, 600.0) {
         return topPadding + (1 - normalized) * drawableHeight()
     }
 
-    private fun drawGrid(gc: javafx.scene.canvas.GraphicsContext, min: Double, max: Double) {
+    private fun drawGrid(gc: GraphicsContext, min: Double, max: Double) {
         val gridColor = Color.web("#E0E0E0")
         gc.stroke = gridColor
         gc.fill = Color.web("#616161")
@@ -162,7 +169,7 @@ class CandlestickCanvas : Canvas(800.0, 600.0) {
         gc.strokeRect(leftPadding, topPadding, drawW, drawH)
     }
 
-    private fun drawTimeAxis(gc: javafx.scene.canvas.GraphicsContext, candles: List<Candle>, candleWidth: Double) {
+    private fun drawTimeAxis(gc: GraphicsContext, candles: List<Candle>, candleWidth: Double) {
         if (candles.isEmpty()) return
         val drawW = drawableWidth()
         val labelCount = 6
@@ -174,11 +181,11 @@ class CandlestickCanvas : Canvas(800.0, 600.0) {
             val x = leftPadding + i * candleWidth
             if (x > leftPadding + drawW) break
             gc.strokeLine(x, topPadding + drawableHeight(), x, topPadding + drawableHeight() + 4.0)
-            gc.fillText(timeFormatter.format(candle.start), x - 12.0, y)
+            gc.fillText(timeFormatter().format(candle.start), x - 12.0, y)
         }
     }
 
-    private fun drawCrosshair(gc: javafx.scene.canvas.GraphicsContext) {
+    private fun drawCrosshair(gc: GraphicsContext) {
         val x = crosshairX ?: return
         val y = crosshairY ?: return
         val drawW = drawableWidth()
@@ -193,12 +200,12 @@ class CandlestickCanvas : Canvas(800.0, 600.0) {
         drawCrosshairLabels(gc, x, y)
     }
 
-    private fun drawCrosshairLabels(gc: javafx.scene.canvas.GraphicsContext, x: Double, y: Double) {
+    private fun drawCrosshairLabels(gc: GraphicsContext, x: Double, y: Double) {
         if (lastVisible.isEmpty()) return
         val index = ((x - leftPadding) / (lastState?.candleWidthPx ?: 1.0)).toInt()
             .coerceIn(0, lastVisible.size - 1)
         val candle = lastVisible[index]
-        val timeText = timeFormatter.format(candle.start)
+        val timeText = timeFormatter().format(candle.start)
         val price = priceForY(y)
         val priceText = String.format("%.2f", price)
 
@@ -228,5 +235,61 @@ class CandlestickCanvas : Canvas(800.0, 600.0) {
     private fun priceForY(y: Double): Double {
         val normalized = ((plotBottom() - y) / drawableHeight()).coerceIn(0.0, 1.0)
         return lastYMin + normalized * (lastYMax - lastYMin)
+    }
+
+    private fun timeFormatter(): DateTimeFormatter {
+        return DateTimeFormatter.ofPattern("HH:mm").withZone(timeZone)
+    }
+
+    private fun drawOverlays(
+        gc: GraphicsContext,
+        state: ChartState,
+        yMin: Double,
+        yMax: Double
+    ) {
+        val overlay = state.overlay ?: return
+        val visibleStart = state.visibleStartIndex
+        val visibleEnd = (visibleStart + state.visibleCount).coerceAtMost(state.totalCandles) - 1
+        val candleWidth = state.candleWidthPx
+
+        overlay.rangeBox?.let { box ->
+            val start = box.startIndexInclusive.coerceIn(visibleStart, visibleEnd)
+            val end = box.endIndexInclusive.coerceIn(visibleStart, visibleEnd)
+            if (end >= start) {
+                val xStart = leftPadding + (start - visibleStart) * candleWidth
+                val xEnd = leftPadding + (end - visibleStart + 1) * candleWidth
+                val topY = yForPrice(box.high, yMin, yMax)
+                val bottomY = yForPrice(box.low, yMin, yMax)
+                gc.fill = Color.web("#F9A825", 0.15)
+                gc.stroke = Color.web("#FB8C00", 0.8)
+                gc.fillRect(xStart, topY, xEnd - xStart, bottomY - topY)
+                gc.strokeRect(xStart, topY, xEnd - xStart, bottomY - topY)
+            }
+        }
+
+        overlay.riskRewardBox?.let { box ->
+            val start = box.startIndexInclusive.coerceIn(visibleStart, visibleEnd)
+            val end = box.endIndexInclusive.coerceIn(visibleStart, visibleEnd)
+            if (end >= start) {
+                val xStart = leftPadding + (start - visibleStart) * candleWidth
+                val xEnd = leftPadding + (end - visibleStart + 1) * candleWidth
+                val entryY = yForPrice(box.entry, yMin, yMax)
+                val stopY = yForPrice(box.stop, yMin, yMax)
+                val targetY = yForPrice(box.target, yMin, yMax)
+
+                val riskTop = minOf(entryY, stopY)
+                val riskBottom = maxOf(entryY, stopY)
+                gc.fill = Color.web("#C62828", 0.18)
+                gc.fillRect(xStart, riskTop, xEnd - xStart, riskBottom - riskTop)
+
+                val rewardTop = minOf(entryY, targetY)
+                val rewardBottom = maxOf(entryY, targetY)
+                gc.fill = Color.web("#2E7D32", 0.18)
+                gc.fillRect(xStart, rewardTop, xEnd - xStart, rewardBottom - rewardTop)
+
+                gc.stroke = Color.web("#424242", 0.6)
+                gc.strokeLine(xStart, entryY, xEnd, entryY)
+            }
+        }
     }
 }

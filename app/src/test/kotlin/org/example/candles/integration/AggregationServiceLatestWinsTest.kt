@@ -1,6 +1,7 @@
 package org.example.candles.integration
 
 import java.nio.file.Paths
+import java.time.Instant
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -58,7 +59,7 @@ class AggregationServiceLatestWinsTest {
 
     private fun dummyCandle(): Candle {
         val tf = Timeframe.parse("1m")
-        val start = java.time.Instant.EPOCH
+        val start = Instant.EPOCH
         return Candle(start, start.plusMillis(tf.millis), 1.0, 1.0, 1.0, 1.0, 1L)
     }
 }

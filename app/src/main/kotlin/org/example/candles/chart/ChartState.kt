@@ -10,6 +10,7 @@ class ChartState {
     var visibleCount: Int = 0
     var candleWidthPx: Double = 6.0
     var yZoomFactor: Double = 1.0
+    var overlay: StrategyOverlay? = null
 
     val minCandleWidthPx: Double = 2.0
     val maxVisibleCandles: Int = 5000
@@ -21,6 +22,7 @@ class ChartState {
         candles = newCandles
         visibleStartIndex = 0
         yZoomFactor = 1.0
+        overlay = null
     }
 
     fun updateVisibleCount(drawableWidth: Double) {

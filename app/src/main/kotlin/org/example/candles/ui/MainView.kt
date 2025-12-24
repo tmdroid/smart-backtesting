@@ -1,60 +1,84 @@
 package org.example.candles.ui
 
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDate
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
+import java.time.ZoneId
+import javafx.animation.PauseTransition
 import javafx.application.Platform
 import javafx.geometry.Insets
 import javafx.scene.control.Alert
+import javafx.scene.control.ProgressIndicator
 import javafx.scene.control.ScrollBar
 import javafx.scene.layout.BorderPane
 import javafx.scene.layout.Priority
 import javafx.scene.layout.StackPane
 import javafx.scene.layout.VBox
+import javafx.util.Duration
 import org.example.candles.chart.CandlestickCanvas
 import org.example.candles.chart.ChartState
+import org.example.candles.chart.RangeBox
+import org.example.candles.chart.RiskRewardBox
+import org.example.candles.chart.StrategyOverlay
 import org.example.candles.domain.Candle
 import org.example.candles.domain.Timeframe
+import org.example.candles.engine.range.RangeDefinition
+import org.example.candles.engine.range.TradingSessionTime
+import org.example.candles.engine.runner.StrategyRunner
+import org.example.candles.engine.strategy.BreakoutSignal
+import org.example.candles.engine.strategy.Direction
+import org.example.candles.engine.strategy.RangeBreakoutStrategy
+import org.example.candles.engine.strategy.RangeBuilt
+import org.example.candles.engine.strategy.TradeParameters
 import org.example.candles.integration.AggregationService
 import org.example.candles.util.ZoomPanHandler
 import org.example.candles.util.Log
 
 class MainView {
-    val root: BorderPane = BorderPane()
+    val root: StackPane = StackPane()
 
+    private val content: BorderPane = BorderPane()
     private val chartCanvas = CandlestickCanvas()
     private val chartPane = StackPane(chartCanvas)
     private val statusBar = StatusBar()
     private val scrollBar = ScrollBar()
     private val aggregationService = AggregationService(Executors.newSingleThreadExecutor())
+    private val overlayExecutor = Executors.newSingleThreadExecutor()
+    private val overlayRequestId = AtomicLong(0)
+    private val overlayDebounce = PauseTransition(Duration.millis(150.0))
     private val chartState = ChartState()
     private val zoomPanHandler = ZoomPanHandler(chartCanvas, chartState, ::onChartChanged)
     private var currentTimeframe: Timeframe? = null
     private var currentDay: LocalDate? = null
-    private var prebuildKey: String? = null
 
     private lateinit var controlsPane: ControlsPane
+    private val loadingOverlay = StackPane()
 
     init {
         controlsPane = ControlsPane(
             onOpenFile = { path -> loadFile(path) },
             onTimeframeChange = { timeframe -> aggregate(timeframe) },
-            onSchemaChange = { _ -> onSchemaChanged() },
             onDayChange = { day -> onDayChanged(day) },
+            onStrategyChange = { _ -> requestOverlayUpdate() },
             onExport = { exportPng() }
         )
-        root.top = controlsPane.root
+        content.top = controlsPane.root
         chartPane.minWidth = 0.0
         chartPane.minHeight = 0.0
         chartCanvas.widthProperty().bind(chartPane.widthProperty())
         chartCanvas.heightProperty().bind(chartPane.heightProperty())
 
-        root.center = VBox(chartPane, scrollBar).apply {
+        content.center = VBox(chartPane, scrollBar).apply {
             VBox.setVgrow(chartPane, Priority.ALWAYS)
             spacing = 4.0
             padding = Insets(4.0)
         }
-        root.bottom = statusBar.root
+        content.bottom = statusBar.root
+
+        setupLoadingOverlay()
+        root.children.addAll(content, loadingOverlay)
 
         scrollBar.min = 0.0
         scrollBar.visibleAmount = 1.0
@@ -71,6 +95,7 @@ class MainView {
         chartCanvas.heightProperty().addListener { _, _, _ ->
             render()
         }
+        overlayDebounce.setOnFinished { computeOverlayAsync() }
     }
 
     fun onShown() {
@@ -155,14 +180,9 @@ class MainView {
         )
     }
 
-    private fun onSchemaChanged() {
-        val timeframe = controlsPane.currentTimeframe() ?: return
-        aggregate(timeframe)
-    }
-
     private fun autoSelectSchema(path: Path) {
         try {
-            java.nio.file.Files.newBufferedReader(path).use { reader ->
+            Files.newBufferedReader(path).use { reader ->
                 val header = reader.readLine() ?: return
                 val columns = header.split(',').map { it.trim() }
                 if (columns.contains("ts_event")) {
@@ -187,7 +207,7 @@ class MainView {
         statusBar.setStatus("${candles.size} candles (${timeframe}, ${filterLabel})")
         statusBar.setLoading(false)
         render()
-        startPrebuildIfNeeded()
+        requestOverlayUpdate()
     }
 
     private fun clampAndRender() {
@@ -213,6 +233,167 @@ class MainView {
         render()
     }
 
+    private fun requestOverlayUpdate() {
+        overlayDebounce.playFromStart()
+    }
+
+    private fun computeOverlayAsync() {
+        val candles = chartState.candles
+        val timeframe = currentTimeframe ?: return
+        if (candles.isEmpty()) {
+            chartState.overlay = null
+            render()
+            return
+        }
+        val config = controlsPane.currentStrategyConfig()
+        if (config == null) {
+            chartState.overlay = null
+            render()
+            return
+        }
+        val nyZone = ZoneId.of("America/New_York")
+        chartCanvas.setTimeZone(nyZone)
+        val id = overlayRequestId.incrementAndGet()
+        val candlesSnapshot = candles
+        val configSnapshot = config
+        overlayExecutor.submit {
+            val overlay = buildOverlay(candlesSnapshot, timeframe, configSnapshot, nyZone)
+            Platform.runLater {
+                if (overlayRequestId.get() == id) {
+                    chartState.overlay = overlay
+                    render()
+                }
+            }
+        }
+    }
+
+    private fun buildOverlay(
+        candles: List<Candle>,
+        timeframe: Timeframe,
+        config: StrategyUiConfig,
+        nyZone: ZoneId
+    ): StrategyOverlay? {
+        val rangeDefinition = RangeDefinition(
+            timeframe = timeframe,
+            sessionTime = TradingSessionTime(
+                timezone = nyZone,
+                start = config.sessionStart,
+                end = config.sessionEnd
+            )
+        )
+        val tradeParameters = TradeParameters(
+            stopLossPoints = config.stopLossPoints,
+            takeProfitPoints = config.takeProfitPoints,
+            breakEvenTriggerPoints = config.breakEvenTriggerPoints
+        )
+        val strategy = RangeBreakoutStrategy(
+            id = "ui-range-breakout",
+            rangeDefinition = rangeDefinition,
+            tradeParameters = tradeParameters
+        )
+        val events = StrategyRunner(listOf(strategy)).run(candles.asSequence())
+        val rangeBuilt = events.filterIsInstance<RangeBuilt>().firstOrNull() ?: return null
+        val breakout = events.filterIsInstance<BreakoutSignal>().firstOrNull()
+
+        val rangeStartIndex = candles.indexOfFirst { !it.start.isBefore(rangeBuilt.range.startTime) }
+            .coerceAtLeast(0)
+        val rangeWindowEndIndex = candles.indexOfLast { it.start.isBefore(rangeBuilt.range.endTime) }
+            .let { if (it < 0) rangeStartIndex else it }
+
+        val breakoutIndex = breakout?.let { signal ->
+            candles.indexOfFirst { it.start == signal.signalCandle.start }.takeIf { it >= 0 }
+        }
+        val rangeEndIndex = if (breakoutIndex != null) {
+            (breakoutIndex + 5).coerceAtMost(candles.size - 1)
+        } else {
+            rangeWindowEndIndex
+        }
+
+        val rangeBox = RangeBox(
+            startIndexInclusive = rangeStartIndex,
+            endIndexInclusive = rangeEndIndex,
+            high = rangeBuilt.range.high,
+            low = rangeBuilt.range.low
+        )
+
+        val riskRewardBox = breakoutIndex?.let { index ->
+            val direction = breakout?.direction ?: Direction.LONG
+            val entry = breakout.breakoutPrice
+            val stop = if (direction == Direction.LONG) {
+                entry - config.stopLossPoints
+            } else {
+                entry + config.stopLossPoints
+            }
+            val target = if (direction == Direction.LONG) {
+                entry + config.takeProfitPoints
+            } else {
+                entry - config.takeProfitPoints
+            }
+            val beTrigger = config.breakEvenTriggerPoints?.let { points ->
+                if (direction == Direction.LONG) entry + points else entry - points
+            }
+            val endIndex = findOutcomeIndex(
+                candles = candles,
+                startIndex = index,
+                direction = direction,
+                entry = entry,
+                stop = stop,
+                target = target,
+                beTrigger = beTrigger
+            )
+            RiskRewardBox(
+                startIndexInclusive = index,
+                endIndexInclusive = endIndex,
+                entry = entry,
+                stop = stop,
+                target = target,
+                direction = direction
+            )
+        }
+
+        return StrategyOverlay(rangeBox, riskRewardBox)
+    }
+
+    private fun findOutcomeIndex(
+        candles: List<Candle>,
+        startIndex: Int,
+        direction: Direction,
+        entry: Double,
+        stop: Double,
+        target: Double,
+        beTrigger: Double?
+    ): Int {
+        var beArmed = false
+        var index = (startIndex + 1).coerceAtMost(candles.size - 1)
+        while (index < candles.size) {
+            val candle = candles[index]
+            if (!beArmed) {
+                if (isStopHit(direction, candle, stop)) return index
+                if (isTargetHit(direction, candle, target)) return index
+                if (beTrigger != null && isBreakEvenTriggerHit(direction, candle, beTrigger)) {
+                    beArmed = true
+                }
+            } else {
+                if (isStopHit(direction, candle, entry)) return index
+                if (isTargetHit(direction, candle, target)) return index
+            }
+            index++
+        }
+        return candles.size - 1
+    }
+
+    private fun isStopHit(direction: Direction, candle: Candle, stop: Double): Boolean {
+        return if (direction == Direction.LONG) candle.low <= stop else candle.high >= stop
+    }
+
+    private fun isTargetHit(direction: Direction, candle: Candle, target: Double): Boolean {
+        return if (direction == Direction.LONG) candle.high >= target else candle.low <= target
+    }
+
+    private fun isBreakEvenTriggerHit(direction: Direction, candle: Candle, trigger: Double): Boolean {
+        return if (direction == Direction.LONG) candle.high >= trigger else candle.low <= trigger
+    }
+
     private fun render() {
         chartCanvas.render(chartState)
     }
@@ -232,6 +413,7 @@ class MainView {
 
     fun shutdown() {
         aggregationService.shutdown()
+        overlayExecutor.shutdownNow()
     }
 
     private fun onDayChanged(day: LocalDate?) {
@@ -240,13 +422,15 @@ class MainView {
         aggregate(tf)
     }
 
-    private fun startPrebuildIfNeeded() {
-        val path = controlsPane.currentFilePath() ?: return
-        val schema = controlsPane.currentSchema()
-        val format = controlsPane.currentTimestampFormat()
-        val key = "${path.toAbsolutePath()}|${schema.timestamp}|${format.name}"
-        if (prebuildKey == key) return
-        prebuildKey = key
-        aggregationService.prebuildDayCaches(path, schema, format)
+    private fun setupLoadingOverlay() {
+        loadingOverlay.style = "-fx-background-color: rgba(255,255,255,0.6);"
+        val indicator = ProgressIndicator()
+        indicator.maxWidth = 64.0
+        indicator.maxHeight = 64.0
+        loadingOverlay.children.add(indicator)
+        loadingOverlay.visibleProperty().bind(statusBar.loadingProperty())
+        loadingOverlay.managedProperty().bind(statusBar.loadingProperty())
+        content.disableProperty().bind(statusBar.loadingProperty())
     }
+
 }

@@ -29,7 +29,7 @@ class AggregationServicePrebuildCacheTest {
         service.prebuildDayCaches(csvPath, schema, format)
 
         val cache = BinaryDayCache(Timeframe.parse("1m"))
-        val expected = setOf(LocalDate.parse("2024-01-01"), LocalDate.parse("2024-01-02"))
+        val expected = setOf(LocalDate.parse("2023-12-31"), LocalDate.parse("2024-01-01"))
         val ok = waitFor { cache.cachedDays(csvPath, schema, format).toSet() == expected }
         assertTrue(ok, "Expected cached days to be created")
         service.shutdown()

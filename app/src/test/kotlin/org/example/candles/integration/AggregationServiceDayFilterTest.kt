@@ -26,7 +26,7 @@ class AggregationServiceDayFilterTest {
             timeframe = Timeframe.parse("1m"),
             schema = CsvSchema(),
             timestampFormat = TimestampFormat.ISO_8601_UTC,
-            day = LocalDate.parse("2024-01-02"),
+            day = LocalDate.parse("2024-01-01"),
             onSuccess = { candles, _ ->
                 results.add(candles.size)
                 latch.countDown()

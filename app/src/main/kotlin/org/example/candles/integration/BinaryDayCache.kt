@@ -6,6 +6,7 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.time.Instant
 import java.time.LocalDate
@@ -27,7 +28,7 @@ class BinaryDayCache(private val sourceTimeframe: Timeframe = Timeframe.parse("1
         timestampFormat: TimestampFormat,
         day: LocalDate
     ): List<Candle>? {
-        val dir = cacheDir(path, schema, timestampFormat)
+        val dir = cacheDirInternal(path, schema, timestampFormat)
         val binPath = dir.resolve("${day}.bin")
         val metaPath = dir.resolve("${day}.meta")
         if (!Files.exists(binPath) || !Files.exists(metaPath)) {
@@ -76,7 +77,7 @@ class BinaryDayCache(private val sourceTimeframe: Timeframe = Timeframe.parse("1
         day: LocalDate,
         candles: List<Candle>
     ) {
-        val dir = cacheDir(path, schema, timestampFormat)
+        val dir = cacheDirInternal(path, schema, timestampFormat)
         Files.createDirectories(dir)
         val binPath = dir.resolve("${day}.bin.tmp")
         val metaPath = dir.resolve("${day}.meta.tmp")
@@ -110,12 +111,12 @@ class BinaryDayCache(private val sourceTimeframe: Timeframe = Timeframe.parse("1
             props.store(output, null)
         }
 
-        Files.move(binPath, dir.resolve("${day}.bin"), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-        Files.move(metaPath, dir.resolve("${day}.meta"), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        Files.move(binPath, dir.resolve("${day}.bin"), StandardCopyOption.REPLACE_EXISTING)
+        Files.move(metaPath, dir.resolve("${day}.meta"), StandardCopyOption.REPLACE_EXISTING)
     }
 
     fun cachedDays(path: Path, schema: CsvSchema, timestampFormat: TimestampFormat): List<LocalDate> {
-        val dir = cacheDir(path, schema, timestampFormat)
+        val dir = cacheDirInternal(path, schema, timestampFormat)
         if (!Files.exists(dir)) return emptyList()
         return try {
             val result = ArrayList<LocalDate>()
@@ -139,7 +140,7 @@ class BinaryDayCache(private val sourceTimeframe: Timeframe = Timeframe.parse("1
     }
 
     fun isCached(path: Path, schema: CsvSchema, timestampFormat: TimestampFormat, day: LocalDate): Boolean {
-        val dir = cacheDir(path, schema, timestampFormat)
+        val dir = cacheDirInternal(path, schema, timestampFormat)
         val binPath = dir.resolve("${day}.bin")
         val metaPath = dir.resolve("${day}.meta")
         if (!Files.exists(binPath) || !Files.exists(metaPath)) return false
@@ -169,7 +170,11 @@ class BinaryDayCache(private val sourceTimeframe: Timeframe = Timeframe.parse("1
         }
     }
 
-    private fun cacheDir(path: Path, schema: CsvSchema, timestampFormat: TimestampFormat): Path {
+    fun cacheDirFor(path: Path, schema: CsvSchema, timestampFormat: TimestampFormat): Path {
+        return cacheDirInternal(path, schema, timestampFormat)
+    }
+
+    private fun cacheDirInternal(path: Path, schema: CsvSchema, timestampFormat: TimestampFormat): Path {
         val dir = path.parent.resolve(".candle-cache")
         val base = path.fileName.toString()
         val fingerprint = fingerprint(path, schema, timestampFormat)

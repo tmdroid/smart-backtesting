@@ -6,6 +6,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.example.candles.domain.Timeframe
 import org.example.candles.io.CsvSchema
+import org.example.candles.io.TimestampFormat
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -24,7 +25,7 @@ class AggregationServiceHappyPathTest {
             path = path,
             timeframe = Timeframe.parse("5m"),
             schema = CsvSchema(),
-            timestampFormat = org.example.candles.io.TimestampFormat.ISO_8601_UTC,
+            timestampFormat = TimestampFormat.ISO_8601_UTC,
             day = null,
             onSuccess = { candles, _ ->
                 results.add(candles.size)

@@ -71,15 +71,17 @@ data class CliConfig(
             return when (value.lowercase()) {
                 "iso" -> TimestampFormat.ISO_8601_UTC
                 "epochmillis" -> TimestampFormat.EPOCH_MILLIS
+                "epochnanos" -> TimestampFormat.EPOCH_NANOS
                 else -> throw IllegalArgumentException("Unsupported timestamp format: $value")
             }
         }
 
         private fun parseSchema(value: String?): CsvSchema {
-            if (value == null || value == "default") {
-                return CsvSchema()
+            return when (value) {
+                null, "default" -> CsvSchema()
+                "mnq" -> CsvSchema(timestamp = "ts_event", optionalColumns = setOf("symbol", "source_symbol"))
+                else -> throw IllegalArgumentException("Unsupported schema preset: $value")
             }
-            throw IllegalArgumentException("Unsupported schema preset: $value")
         }
     }
 }

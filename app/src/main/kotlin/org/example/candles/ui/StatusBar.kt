@@ -1,5 +1,7 @@
 package org.example.candles.ui
 
+import javafx.beans.property.BooleanProperty
+import javafx.beans.property.SimpleBooleanProperty
 import javafx.geometry.Insets
 import javafx.scene.control.Label
 import javafx.scene.control.ProgressIndicator
@@ -10,6 +12,7 @@ class StatusBar {
 
     private val statusLabel = Label("Idle")
     private val loadingIndicator = ProgressIndicator()
+    private val loadingProperty = SimpleBooleanProperty(false)
 
     init {
         root.spacing = 8.0
@@ -17,6 +20,7 @@ class StatusBar {
         loadingIndicator.isVisible = false
         loadingIndicator.maxWidth = 16.0
         loadingIndicator.maxHeight = 16.0
+        loadingIndicator.visibleProperty().bind(loadingProperty)
         root.children.addAll(statusLabel, loadingIndicator)
     }
 
@@ -25,6 +29,8 @@ class StatusBar {
     }
 
     fun setLoading(loading: Boolean) {
-        loadingIndicator.isVisible = loading
+        loadingProperty.set(loading)
     }
+
+    fun loadingProperty(): BooleanProperty = loadingProperty
 }

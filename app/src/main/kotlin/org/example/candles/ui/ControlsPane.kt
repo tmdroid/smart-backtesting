@@ -2,6 +2,7 @@ package org.example.candles.ui
 
 import java.nio.file.Path
 import java.time.LocalDate
+import java.time.LocalTime
 import javafx.geometry.Insets
 import javafx.scene.control.Button
 import javafx.scene.control.ComboBox
@@ -9,6 +10,7 @@ import javafx.scene.control.DatePicker
 import javafx.scene.control.Label
 import javafx.scene.control.TextField
 import javafx.scene.layout.HBox
+import javafx.scene.layout.VBox
 import javafx.stage.FileChooser
 import org.example.candles.domain.Timeframe
 import org.example.candles.io.CsvSchema
@@ -17,11 +19,13 @@ import org.example.candles.io.TimestampFormat
 class ControlsPane(
     private val onOpenFile: (Path) -> Unit,
     private val onTimeframeChange: (Timeframe) -> Unit,
-    private val onSchemaChange: (CsvSchema) -> Unit,
     private val onDayChange: (LocalDate?) -> Unit,
+    private val onStrategyChange: (StrategyUiConfig) -> Unit,
     private val onExport: () -> Unit
 ) {
-    val root: HBox = HBox()
+    val root: VBox = VBox()
+    private val rowTop: HBox = HBox()
+    private val rowBottom: HBox = HBox()
 
     private val fileLabel = Label("No file")
     private val openButton = Button("Open File")
@@ -29,17 +33,25 @@ class ControlsPane(
     private val timeframeBox = ComboBox<String>()
     private val customField = TextField()
     private val applyCustomButton = Button("Apply")
-    private val schemaBox = ComboBox<String>()
     private val dayPicker = DatePicker()
+    private val prevDayButton = Button("◀")
+    private val nextDayButton = Button("▶")
     private val clearDayButton = Button("Clear Day")
+    private val sessionStartField = TextField()
+    private val sessionEndField = TextField()
+    private val stopLossField = TextField()
+    private val takeProfitField = TextField()
+    private val breakEvenField = TextField()
 
     private var currentFile: Path? = null
-    private var suppressSchemaEvent = false
     private var suppressTimeframeEvent = false
+    private var schemaPreset: String = "default"
 
     init {
-        root.spacing = 8.0
+        root.spacing = 6.0
         root.padding = Insets(8.0)
+        rowTop.spacing = 8.0
+        rowBottom.spacing = 8.0
 
         openButton.setOnAction { openFileDialog() }
         exportButton.setOnAction { onExport() }
@@ -53,18 +65,16 @@ class ControlsPane(
             }
         }
 
-        schemaBox.items.addAll("default", "mnq")
-        schemaBox.selectionModel.select("default")
-        schemaBox.setOnAction {
-            if (!suppressSchemaEvent) {
-                onSchemaChange(currentSchema())
-            }
-        }
-
-        dayPicker.promptText = "Day (UTC)"
+        dayPicker.promptText = "Day"
         dayPicker.isEditable = false
         dayPicker.valueProperty().addListener { _, _, newValue ->
             onDayChange(newValue)
+        }
+        prevDayButton.setOnAction {
+            dayPicker.value = (dayPicker.value ?: return@setOnAction).minusDays(1)
+        }
+        nextDayButton.setOnAction {
+            dayPicker.value = (dayPicker.value ?: return@setOnAction).plusDays(1)
         }
         clearDayButton.setOnAction {
             dayPicker.value = null
@@ -74,17 +84,51 @@ class ControlsPane(
         customField.promptText = "Custom TF (e.g. 7m)"
         applyCustomButton.setOnAction { applyCustomTimeframe() }
 
-        root.children.addAll(
+        sessionStartField.text = "03:00"
+        sessionEndField.text = "03:15"
+        stopLossField.text = "40"
+        takeProfitField.text = "40"
+        breakEvenField.promptText = "BE (optional)"
+
+        val strategyFields = listOf(
+            sessionStartField,
+            sessionEndField,
+            stopLossField,
+            takeProfitField,
+            breakEvenField
+        )
+        for (field in strategyFields) {
+            field.setOnAction { emitStrategyConfig() }
+            field.focusedProperty().addListener { _, _, newValue ->
+                if (!newValue) emitStrategyConfig()
+            }
+        }
+
+        rowTop.children.addAll(
             openButton,
             fileLabel,
             timeframeBox,
             customField,
             applyCustomButton,
-            schemaBox,
+            prevDayButton,
             dayPicker,
+            nextDayButton,
             clearDayButton,
             exportButton
         )
+        rowBottom.children.addAll(
+            Label("Session"),
+            sessionStartField,
+            Label("-"),
+            sessionEndField,
+            Label("SL"),
+            stopLossField,
+            Label("TP"),
+            takeProfitField,
+            Label("BE"),
+            breakEvenField
+        )
+        root.children.addAll(rowTop, rowBottom)
     }
 
     fun setCurrentFile(path: Path) {
@@ -104,7 +148,7 @@ class ControlsPane(
     }
 
     fun currentSchema(): CsvSchema {
-        return when (schemaBox.value) {
+        return when (schemaPreset) {
             "mnq" -> CsvSchema(
                 timestamp = "ts_event",
                 optionalColumns = setOf("symbol", "source_symbol")
@@ -114,16 +158,14 @@ class ControlsPane(
     }
 
     fun currentTimestampFormat(): TimestampFormat {
-        return when (schemaBox.value) {
+        return when (schemaPreset) {
             "mnq" -> TimestampFormat.EPOCH_NANOS
             else -> TimestampFormat.ISO_8601_UTC
         }
     }
 
     fun setSchemaPreset(name: String) {
-        suppressSchemaEvent = true
-        schemaBox.selectionModel.select(name)
-        suppressSchemaEvent = false
+        schemaPreset = name
     }
 
     fun setTimeframePreset(value: String) {
@@ -136,6 +178,27 @@ class ControlsPane(
 
     fun setCurrentDay(day: LocalDate?) {
         dayPicker.value = day
+    }
+
+    fun currentStrategyConfig(): StrategyUiConfig? {
+        val start = parseLocalTime(sessionStartField.text.trim(), "Session start")
+        val end = parseLocalTime(sessionEndField.text.trim(), "Session end")
+        if (start == null || end == null) return null
+        val stopLoss = parseDouble(stopLossField.text.trim(), "Stop loss") ?: return null
+        val takeProfit = parseDouble(takeProfitField.text.trim(), "Take profit") ?: return null
+        val breakEvenText = breakEvenField.text.trim()
+        val breakEven = if (breakEvenText.isEmpty()) {
+            null
+        } else {
+            parseDouble(breakEvenText, "Break even") ?: return null
+        }
+        return StrategyUiConfig(
+            sessionStart = start,
+            sessionEnd = end,
+            stopLossPoints = stopLoss,
+            takeProfitPoints = takeProfit,
+            breakEvenTriggerPoints = breakEven
+        )
     }
 
     private fun openFileDialog() {
@@ -166,6 +229,37 @@ class ControlsPane(
         } catch (ex: Exception) {
             ErrorDialogs.show("Invalid timeframe", ex.message ?: "Invalid timeframe")
             null
+        }
+    }
+
+    private fun emitStrategyConfig() {
+        val config = currentStrategyConfig() ?: return
+        onStrategyChange(config)
+    }
+
+    private fun parseLocalTime(value: String, label: String): LocalTime? {
+        if (value.isEmpty()) {
+            ErrorDialogs.show("Invalid $label", "Value is required")
+            return null
+        }
+        return try {
+            LocalTime.parse(value)
+        } catch (ex: Exception) {
+            ErrorDialogs.show("Invalid $label", "Use HH:mm format")
+            null
+        }
+    }
+
+    private fun parseDouble(value: String, label: String): Double? {
+        if (value.isEmpty()) {
+            ErrorDialogs.show("Invalid $label", "Value is required")
+            return null
+        }
+        return value.toDoubleOrNull()?.also {
+            if (it <= 0.0) {
+                ErrorDialogs.show("Invalid $label", "Value must be > 0")
+                return null
+            }
         }
     }
 
