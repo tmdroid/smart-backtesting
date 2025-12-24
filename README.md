@@ -101,7 +101,6 @@ Safe to delete when you want a full rebuild.
 ## Project layout
 
 - `app/` main application (UI, aggregation, strategy, backtest)
-- `utils/` shared utilities
 - `buildSrc/` shared Gradle convention plugins
 
 ## Notes
